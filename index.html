@@ -534,6 +534,7 @@
     <div class="toc-phase"><a href="#phase8"><div class="toc-num">8</div> CachyOS Kernel</a></div>
     <div class="toc-phase"><a href="#phase9"><div class="toc-num">9</div> Dev Environment</a></div>
     <div class="toc-phase"><a href="#phase10"><div class="toc-num">10</div> Disk Layout Reference</a></div>
+    <div class="toc-phase"><a href="#script"><div class="toc-num">S</div> Setup Script</a></div>
   </nav>
 
   <main class="content">
@@ -1165,6 +1166,1626 @@ Include = /etc/pacman.d/chaotic-mirrorlist</pre>
       <strong style="color: var(--text);">EndeavourOS + CachyOS Kernel + Hyprland</strong><br>
       Dual boot with BitLocker (Windows) + LUKS2 (Linux) · Guide generated for your 500GB M.2 + 32GB RAM setup
     </div>
+
+  
+    <!-- ═══════════════════════════════════════════════════════════
+         SETUP SCRIPT SECTION
+    ═══════════════════════════════════════════════════════════ -->
+    <div style="margin-top: 56px; padding-top: 32px; border-top: 2px solid var(--border);" id="script">
+
+      <div class="phase-label" style="margin-bottom: 8px;">Setup Script</div>
+      <h2 style="font-size: 26px; font-weight: 800; margin-bottom: 8px;">eos-setup.sh</h2>
+      <p style="color: var(--muted); font-size: 14px; margin-bottom: 24px;">
+        Copy this script, save it as <code>eos-setup.sh</code>, edit your
+        <code>GIT_NAME</code> and <code>GIT_EMAIL</code> at the top, then run:
+      </p>
+
+      <div class="code-block" style="margin-bottom: 12px;">
+        <div class="code-label">How to run</div>
+        <pre><span class="cmd">chmod</span> <span class="flag">+x</span> eos-setup.sh
+<span class="cmd">./eos-setup.sh</span></pre>
+      </div>
+
+      <!-- Copy button bar -->
+      <div style="display: flex; align-items: center; justify-content: space-between;
+                  background: var(--surface2); border: 1px solid var(--border);
+                  border-bottom: none; border-radius: 10px 10px 0 0;
+                  padding: 10px 18px;">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px;
+                     text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted);">
+          eos-setup.sh &nbsp;·&nbsp; bash &nbsp;·&nbsp; 760 lines
+        </span>
+        <button id="copyBtn" onclick="copyScript()" style="
+          display: flex; align-items: center; gap: 8px;
+          font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700;
+          color: var(--bg); background: var(--accent);
+          border: none; border-radius: 6px; padding: 7px 18px;
+          cursor: pointer; transition: all 0.15s; letter-spacing: 0.3px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          Copy Script
+        </button>
+      </div>
+
+      <!-- Script content display -->
+      <div style="background: var(--code-bg); border: 1px solid var(--border);
+                  border-radius: 0 0 10px 10px; overflow: auto; max-height: 520px;
+                  position: relative;">
+        <pre id="scriptContent" style="font-family: 'JetBrains Mono', monospace;
+             font-size: 12px; line-height: 1.65; padding: 20px 24px;
+             color: #c9d1d9; margin: 0; white-space: pre;">#!/usr/bin/env bash
+# =============================================================================
+#  EndeavourOS Dev Setup Script
+#  Hyprland + Docker + Full Dev Environment
+#  Run as your regular user (NOT root). Script uses sudo where needed.
+#
+#  AUR packages are built from source via paru — no third-party binary repos.
+# =============================================================================
+
+set -euo pipefail
+
+# ─── Colors ──────────────────────────────────────────────────────────────────
+RED='\\033[0;31m';    GREEN='\\033[0;32m';  YELLOW='\\033[1;33m'
+BLUE='\\033[0;34m';   CYAN='\\033[0;36m';  BOLD='\\033[1m';  RESET='\\033[0m'
+
+# ─── Logging helpers ─────────────────────────────────────────────────────────
+log()     { echo -e "\${BOLD}\${BLUE}[•]\${RESET} $*"; }
+success() { echo -e "\${BOLD}\${GREEN}[✓]\${RESET} $*"; }
+warn()    { echo -e "\${BOLD}\${YELLOW}[!]\${RESET} $*"; }
+error()   { echo -e "\${BOLD}\${RED}[✗]\${RESET} $*"; exit 1; }
+section() { echo -e "\\n\${BOLD}\${CYAN}━━━ $* ━━━\${RESET}\\n"; }
+ask()     { echo -e "\${BOLD}\${YELLOW}[?]\${RESET} $*"; }
+
+# ─── Log file ────────────────────────────────────────────────────────────────
+LOGFILE="$HOME/eos-setup.log"
+exec > >(tee -a "$LOGFILE") 2>&1
+log "Full log will be saved to: $LOGFILE"
+
+# ─── Guard: must NOT run as root ─────────────────────────────────────────────
+if [[ "$EUID" -eq 0 ]]; then
+  error "Do NOT run this script as root. Run as your regular user."
+fi
+
+# ─── Sudo keepalive ──────────────────────────────────────────────────────────
+# Refresh sudo timestamp every 60s so we don't get locked out mid-script
+sudo -v
+( while true; do sudo -v; sleep 60; done ) &
+SUDO_KEEPALIVE_PID=$!
+trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null' EXIT
+
+# =============================================================================
+#  CONFIGURATION — Edit these before running
+# =============================================================================
+
+# Git identity (used for global git config)
+GIT_NAME="Your Name"
+GIT_EMAIL="you@example.com"
+
+# Extra packages you want installed (space-separated)
+EXTRA_PACMAN_PKGS=""
+EXTRA_AUR_PKGS=""
+
+# Set to "yes" to install nvm + Node.js
+INSTALL_NODE="yes"
+
+# Set to "yes" to install Python dev tools
+INSTALL_PYTHON="yes"
+
+# Set to "yes" to install Rust
+INSTALL_RUST="yes"
+
+# Default shell: "zsh" or "bash"
+PREFERRED_SHELL="zsh"
+
+# =============================================================================
+#  STEP 1 — Full system update
+# =============================================================================
+section "System Update"
+
+log "Updating keyring and packages..."
+sudo pacman -Sy --noconfirm --needed archlinux-keyring endeavouros-keyring 2>/dev/null || true
+sudo pacman -Syu --noconfirm
+success "System is up to date"
+
+# =============================================================================
+#  STEP 2 — Base build tools
+# =============================================================================
+section "Base Build Tools"
+
+BASE_PKGS=(
+  base-devel git curl wget unzip zip p7zip
+  reflector rsync htop neofetch tree
+  man-db man-pages bash-completion
+)
+
+log "Installing base packages..."
+sudo pacman -S --noconfirm --needed "\${BASE_PKGS[@]}"
+success "Base tools installed"
+
+# =============================================================================
+#  STEP 3 — paru (AUR helper)
+# =============================================================================
+section "AUR Helper (paru)"
+
+if command -v paru &> /dev/null; then
+  warn "paru already installed, skipping"
+else
+  log "Building and installing paru..."
+  PARU_BUILD_DIR=$(mktemp -d)
+  git clone --depth=1 https://aur.archlinux.org/paru.git "$PARU_BUILD_DIR/paru"
+  pushd "$PARU_BUILD_DIR/paru" > /dev/null
+  makepkg -si --noconfirm
+  popd > /dev/null
+  rm -rf "$PARU_BUILD_DIR"
+  success "paru installed"
+fi
+
+# =============================================================================
+#  STEP 4 — CachyOS kernel (built from AUR source)
+# =============================================================================
+section "CachyOS Kernel (AUR source build)"
+
+if pacman -Qs linux-cachyos > /dev/null 2>&1; then
+  warn "CachyOS kernel already installed, skipping"
+else
+  log "Building linux-cachyos and headers from AUR source..."
+  log "Note: this compiles the kernel — expect 20-60 mins depending on your CPU"
+  paru -S --noconfirm linux-cachyos linux-cachyos-headers
+
+  log "Regenerating GRUB to include the new kernel..."
+  sudo grub-mkconfig -o /boot/grub/grub.cfg
+
+  success "CachyOS kernel built and installed from source"
+  warn "Select it in GRUB > Advanced Options on next boot to verify it works"
+  warn "Once confirmed, you can set it as default (see next steps at end of script)"
+fi
+
+# =============================================================================
+#  STEP 5 — Hyprland & Wayland ecosystem
+# =============================================================================
+section "Hyprland + Wayland"
+
+HYPR_PKGS=(
+  # Core Hyprland
+  hyprland
+  xdg-desktop-portal-hyprland
+  xdg-desktop-portal-gtk
+  xdg-user-dirs
+
+  # Status bar & launcher
+  waybar
+  wofi
+
+  # Terminal
+  kitty
+
+  # Audio (Pipewire stack)
+  pipewire
+  pipewire-alsa
+  pipewire-pulse
+  pipewire-jack
+  wireplumber
+  pavucontrol
+
+  # Auth agent
+  polkit-kde-agent
+
+  # Qt Wayland support
+  qt5-wayland
+  qt6-wayland
+
+  # File manager
+  thunar
+  gvfs
+  tumbler
+  ffmpegthumbnailer
+
+  # Notifications
+  dunst
+  libnotify
+
+  # Clipboard
+  wl-clipboard
+  cliphist
+
+  # Wallpaper
+  swww
+
+  # Screenshot
+  grim
+  slurp
+  swappy
+
+  # Screen lock
+  swaylock
+  swayidle
+
+  # Fonts
+  noto-fonts
+  noto-fonts-cjk
+  noto-fonts-emoji
+  ttf-jetbrains-mono-nerd
+  ttf-nerd-fonts-symbols
+
+  # Theming
+  papirus-icon-theme
+  gtk3
+  gtk4
+)
+
+log "Installing Hyprland and Wayland packages..."
+sudo pacman -S --noconfirm --needed "\${HYPR_PKGS[@]}"
+success "Hyprland ecosystem installed"
+
+# =============================================================================
+#  STEP 6 — Hyprland config (starter dotfiles)
+# =============================================================================
+section "Hyprland Base Config"
+
+HYPR_CFG_DIR="$HOME/.config/hypr"
+mkdir -p "$HYPR_CFG_DIR"
+
+if [[ -f "$HYPR_CFG_DIR/hyprland.conf" ]]; then
+  warn "hyprland.conf already exists, backing up to hyprland.conf.bak"
+  cp "$HYPR_CFG_DIR/hyprland.conf" "$HYPR_CFG_DIR/hyprland.conf.bak"
+fi
+
+log "Writing starter Hyprland config..."
+cat > "$HYPR_CFG_DIR/hyprland.conf" <<'EOF'
+# =============================================================================
+#  Hyprland config — Starter (customize freely)
+# =============================================================================
+
+# Monitor (auto-detect; adjust if needed)
+monitor=,preferred,auto,1
+
+# Autostart
+exec-once = pipewire &
+exec-once = pipewire-pulse &
+exec-once = wireplumber &
+exec-once = /usr/lib/polkit-kde-authentication-agent-1
+exec-once = swww init
+exec-once = waybar
+exec-once = dunst
+exec-once = wl-paste --type text  --watch cliphist store
+exec-once = wl-paste --type image --watch cliphist store
+
+# Environment variables
+env = XCURSOR_SIZE,24
+env = GDK_BACKEND,wayland,x11
+env = QT_QPA_PLATFORM,wayland;xcb
+env = SDL_VIDEODRIVER,wayland
+env = CLUTTER_BACKEND,wayland
+
+# Input
+input {
+  kb_layout = us
+  follow_mouse = 1
+  sensitivity = 0
+  touchpad {
+    natural_scroll = false
+  }
+}
+
+# General
+general {
+  gaps_in = 5
+  gaps_out = 10
+  border_size = 2
+  col.active_border = rgba(7c5cfcee) rgba(00d4aaee) 45deg
+  col.inactive_border = rgba(1a1e28aa)
+  layout = dwindle
+}
+
+# Decoration
+decoration {
+  rounding = 8
+  blur {
+    enabled = true
+    size = 6
+    passes = 2
+    new_optimizations = true
+  }
+  drop_shadow = true
+  shadow_range = 8
+  shadow_render_power = 2
+  col.shadow = rgba(1a1a2eee)
+}
+
+# Animations
+animations {
+  enabled = true
+  bezier = overshot, 0.05, 0.9, 0.1, 1.05
+  animation = windows, 1, 5, overshot
+  animation = windowsOut, 1, 4, default, popin 80%
+  animation = border, 1, 6, default
+  animation = fade, 1, 5, default
+  animation = workspaces, 1, 5, overshot, slidevert
+}
+
+# Layout
+dwindle {
+  pseudotile = true
+  preserve_split = true
+}
+
+# Keybinds — Super = Windows key
+$mod = SUPER
+
+bind = $mod, Return, exec, kitty
+bind = $mod, Q, killactive
+bind = $mod, M, exit
+bind = $mod, E, exec, thunar
+bind = $mod, V, togglefloating
+bind = $mod, R, exec, wofi --show drun
+bind = $mod, P, pseudo
+bind = $mod, J, togglesplit
+bind = $mod, F, fullscreen
+
+# Screenshot
+bind = , Print, exec, grim -g "$(slurp)" - | swappy -f -
+
+# Clipboard history
+bind = $mod, C, exec, cliphist list | wofi --dmenu | cliphist decode | wl-copy
+
+# Move focus
+bind = $mod, left,  movefocus, l
+bind = $mod, right, movefocus, r
+bind = $mod, up,    movefocus, u
+bind = $mod, down,  movefocus, d
+
+# Workspaces
+bind = $mod, 1, workspace, 1
+bind = $mod, 2, workspace, 2
+bind = $mod, 3, workspace, 3
+bind = $mod, 4, workspace, 4
+bind = $mod, 5, workspace, 5
+bind = $mod, 6, workspace, 6
+bind = $mod, 7, workspace, 7
+bind = $mod, 8, workspace, 8
+bind = $mod, 9, workspace, 9
+
+# Move window to workspace
+bind = $mod SHIFT, 1, movetoworkspace, 1
+bind = $mod SHIFT, 2, movetoworkspace, 2
+bind = $mod SHIFT, 3, movetoworkspace, 3
+bind = $mod SHIFT, 4, movetoworkspace, 4
+bind = $mod SHIFT, 5, movetoworkspace, 5
+
+# Mouse binds
+bindm = $mod, mouse:272, movewindow
+bindm = $mod, mouse:273, resizewindow
+
+# Volume
+bind = , XF86AudioRaiseVolume,  exec, pactl set-sink-volume @DEFAULT_SINK@ +5%
+bind = , XF86AudioLowerVolume,  exec, pactl set-sink-volume @DEFAULT_SINK@ -5%
+bind = , XF86AudioMute,         exec, pactl set-sink-mute   @DEFAULT_SINK@ toggle
+
+# Brightness (requires brightnessctl)
+bind = , XF86MonBrightnessUp,   exec, brightnessctl set +10%
+bind = , XF86MonBrightnessDown, exec, brightnessctl set 10%-
+EOF
+
+success "Hyprland config written to $HYPR_CFG_DIR/hyprland.conf"
+
+# Starter waybar config dir
+mkdir -p "$HOME/.config/waybar"
+if [[ ! -f "$HOME/.config/waybar/config.jsonc" ]]; then
+  log "Writing starter Waybar config..."
+  cat > "$HOME/.config/waybar/config.jsonc" <<'EOF'
+{
+  "layer": "top",
+  "position": "top",
+  "height": 36,
+  "spacing": 4,
+
+  "modules-left":   ["hyprland/workspaces", "hyprland/window"],
+  "modules-center": ["clock"],
+  "modules-right":  ["pulseaudio", "network", "cpu", "memory", "battery", "tray"],
+
+  "hyprland/workspaces": { "on-click": "activate" },
+  "hyprland/window":     { "max-length": 60 },
+
+  "clock": {
+    "format": "{:%a %b %d  %H:%M}",
+    "tooltip-format": "<tt>{calendar}</tt>"
+  },
+  "cpu":    { "format": " {usage}%", "interval": 2 },
+  "memory": { "format": " {used:0.1f}G", "interval": 5 },
+  "battery": {
+    "states": { "warning": 30, "critical": 15 },
+    "format": "{icon} {capacity}%",
+    "format-icons": ["", "", "", "", ""]
+  },
+  "network": {
+    "format-wifi":         " {essid}",
+    "format-ethernet":     " Wired",
+    "format-disconnected": "⚠ No Network"
+  },
+  "pulseaudio": {
+    "format": "{icon} {volume}%",
+    "format-muted": " Muted",
+    "format-icons": { "default": ["", "", ""] },
+    "on-click": "pavucontrol"
+  },
+  "tray": { "spacing": 8 }
+}
+EOF
+fi
+
+# =============================================================================
+#  STEP 7 — Docker
+# =============================================================================
+section "Docker & Docker Compose"
+
+if pacman -Qs docker > /dev/null 2>&1; then
+  warn "Docker already installed, skipping"
+else
+  log "Installing Docker..."
+  sudo pacman -S --noconfirm --needed docker docker-compose docker-buildx
+fi
+
+log "Enabling Docker service..."
+sudo systemctl enable --now docker
+
+if id -nG "$USER" | grep -qw docker; then
+  warn "User already in docker group"
+else
+  log "Adding $USER to docker group..."
+  sudo usermod -aG docker "$USER"
+  warn "Log out and back in for docker group to take effect"
+fi
+
+success "Docker ready"
+
+# =============================================================================
+#  STEP 8 — AUR-based dev tools
+# =============================================================================
+section "Dev Tools (AUR)"
+
+AUR_PKGS=(
+  visual-studio-code-bin
+  postman-bin
+  lazygit
+  github-cli
+  btop
+)
+
+[[ -n "$EXTRA_AUR_PKGS" ]] && read -ra _extra <<< "$EXTRA_AUR_PKGS" && AUR_PKGS+=("\${_extra[@]}")
+
+log "Installing AUR dev tools..."
+paru -S --noconfirm --needed "\${AUR_PKGS[@]}"
+success "AUR dev tools installed"
+
+# =============================================================================
+#  STEP 9 — Zsh + Starship
+# =============================================================================
+section "Shell: Zsh + Starship"
+
+log "Installing zsh and plugins..."
+sudo pacman -S --noconfirm --needed \\
+  zsh \\
+  zsh-autosuggestions \\
+  zsh-syntax-highlighting \\
+  zsh-completions
+
+log "Installing Starship prompt..."
+sudo pacman -S --noconfirm --needed starship
+
+if [[ "$PREFERRED_SHELL" == "zsh" && "$SHELL" != "$(which zsh)" ]]; then
+  log "Setting zsh as default shell..."
+  chsh -s "$(which zsh)"
+  success "Default shell changed to zsh (takes effect on next login)"
+fi
+
+# Write ~/.zshrc
+ZSHRC="$HOME/.zshrc"
+if [[ ! -f "$ZSHRC" ]]; then
+  log "Writing ~/.zshrc..."
+  cat > "$ZSHRC" <<'EOF'
+# ─── History ───────────────────────────────────────────────────────────────
+HISTFILE=~/.zsh_history
+HISTSIZE=10000
+SAVEHIST=10000
+setopt HIST_IGNORE_DUPS HIST_IGNORE_SPACE SHARE_HISTORY
+
+# ─── Plugins ───────────────────────────────────────────────────────────────
+source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
+# ─── Completion ────────────────────────────────────────────────────────────
+autoload -Uz compinit && compinit
+
+# ─── Wayland / dev env vars ────────────────────────────────────────────────
+export XDG_SESSION_TYPE=wayland
+export GDK_BACKEND=wayland,x11
+export QT_QPA_PLATFORM="wayland;xcb"
+export MOZ_ENABLE_WAYLAND=1
+export EDITOR=nvim
+export VISUAL=nvim
+export TERMINAL=kitty
+export BROWSER=firefox
+
+# ─── Aliases ───────────────────────────────────────────────────────────────
+alias ls='ls --color=auto'
+alias ll='ls -lah'
+alias la='ls -A'
+alias grep='grep --color=auto'
+alias vim='nvim'
+alias dc='docker compose'
+alias dcu='docker compose up -d'
+alias dcd='docker compose down'
+alias dcl='docker compose logs -f'
+alias gst='git status'
+alias gp='git push'
+alias gl='git pull'
+
+# ─── Starship prompt ───────────────────────────────────────────────────────
+eval "$(starship init zsh)"
+EOF
+  success "~/.zshrc created"
+else
+  warn "~/.zshrc already exists, skipping (check it manually)"
+fi
+
+# =============================================================================
+#  STEP 10 — Node.js via nvm
+# =============================================================================
+if [[ "$INSTALL_NODE" == "yes" ]]; then
+  section "Node.js (nvm)"
+
+  if [[ -d "$HOME/.nvm" ]]; then
+    warn "nvm already installed, skipping"
+  else
+    log "Installing nvm..."
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+
+    # Add nvm to zshrc
+    cat >> "$ZSHRC" <<'EOF'
+
+# ─── nvm ───────────────────────────────────────────────────────────────────
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \\. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \\. "$NVM_DIR/bash_completion"
+EOF
+
+    # Install LTS Node.js
+    export NVM_DIR="$HOME/.nvm"
+    source "$NVM_DIR/nvm.sh"
+    log "Installing Node.js LTS..."
+    nvm install --lts
+    nvm use --lts
+    nvm alias default 'lts/*'
+    success "Node.js LTS installed via nvm"
+  fi
+fi
+
+# =============================================================================
+#  STEP 11 — Python dev tools
+# =============================================================================
+if [[ "$INSTALL_PYTHON" == "yes" ]]; then
+  section "Python"
+
+  sudo pacman -S --noconfirm --needed \\
+    python \\
+    python-pip \\
+    python-virtualenv \\
+    python-pipx \\
+    python-poetry
+
+  success "Python tools installed"
+fi
+
+# =============================================================================
+#  STEP 12 — Rust
+# =============================================================================
+if [[ "$INSTALL_RUST" == "yes" ]]; then
+  section "Rust (rustup)"
+
+  if command -v rustup &> /dev/null; then
+    warn "Rust already installed, skipping"
+  else
+    log "Installing Rust via rustup..."
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    source "$HOME/.cargo/env"
+    success "Rust installed"
+
+    # Add cargo to zshrc
+    cat >> "$ZSHRC" <<'EOF'
+
+# ─── Rust / Cargo ──────────────────────────────────────────────────────────
+source "$HOME/.cargo/env"
+EOF
+  fi
+fi
+
+# =============================================================================
+#  STEP 13 — Git global config
+# =============================================================================
+section "Git Config"
+
+if [[ "$GIT_NAME" != "Your Name" ]]; then
+  git config --global user.name  "$GIT_NAME"
+  git config --global user.email "$GIT_EMAIL"
+fi
+
+git config --global init.defaultBranch main
+git config --global core.editor nvim
+git config --global pull.rebase false
+git config --global alias.lg "log --oneline --graph --decorate --all"
+git config --global alias.st status
+git config --global alias.co checkout
+
+success "Git configured"
+
+# =============================================================================
+#  STEP 14 — System performance tuning
+# =============================================================================
+section "Performance Tuning"
+
+log "Writing /etc/sysctl.d/99-dev.conf..."
+sudo tee /etc/sysctl.d/99-dev.conf > /dev/null <<'EOF'
+# Inotify: needed for file-heavy dev servers (webpack, vite, etc.)
+fs.inotify.max_user_watches = 524288
+fs.inotify.max_user_instances = 512
+
+# Keep swap minimal with 32GB RAM
+vm.swappiness = 10
+
+# Better network throughput
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+EOF
+
+sudo sysctl --system > /dev/null
+success "sysctl tuning applied"
+
+log "Enabling periodic SSD TRIM..."
+sudo systemctl enable fstrim.timer
+success "fstrim.timer enabled"
+
+log "Setting up reflector for fastest mirrors..."
+sudo pacman -S --noconfirm --needed reflector
+sudo tee /etc/xdg/reflector/reflector.conf > /dev/null <<'EOF'
+--save /etc/pacman.d/mirrorlist
+--country "United States,Germany,Netherlands"
+--protocol https
+--latest 10
+--sort rate
+EOF
+sudo systemctl enable --now reflector.service
+success "Reflector configured and enabled"
+
+# =============================================================================
+#  STEP 15 — Extra useful packages
+# =============================================================================
+section "Extras"
+
+EXTRA_PKGS=(
+  neovim
+  tmux
+  ripgrep
+  fd
+  bat
+  eza
+  fzf
+  jq
+  yq
+  httpie
+  net-tools
+  openssh
+  gnupg
+  brightnessctl
+  networkmanager
+  nm-connection-editor
+  firefox
+)
+
+[[ -n "$EXTRA_PACMAN_PKGS" ]] && read -ra _expac <<< "$EXTRA_PACMAN_PKGS" && EXTRA_PKGS+=("\${_expac[@]}")
+
+log "Installing extra tools..."
+sudo pacman -S --noconfirm --needed "\${EXTRA_PKGS[@]}"
+
+# Modern ls aliases using eza
+cat >> "$ZSHRC" <<'EOF'
+
+# ─── eza (modern ls) ───────────────────────────────────────────────────────
+if command -v eza &> /dev/null; then
+  alias ls='eza --icons'
+  alias ll='eza -lah --icons --git'
+  alias la='eza -a --icons'
+  alias tree='eza --tree --icons'
+fi
+
+# ─── bat (modern cat) ──────────────────────────────────────────────────────
+if command -v bat &> /dev/null; then
+  alias cat='bat --paging=never'
+fi
+
+# ─── fzf keybinds ──────────────────────────────────────────────────────────
+source /usr/share/fzf/key-bindings.zsh 2>/dev/null || true
+source /usr/share/fzf/completion.zsh   2>/dev/null || true
+EOF
+
+success "Extra tools installed"
+
+# =============================================================================
+#  STEP 16 — XDG user dirs
+# =============================================================================
+section "XDG User Directories"
+xdg-user-dirs-update
+success "XDG dirs created"
+
+# =============================================================================
+#  STEP 17 — Enable system services
+# =============================================================================
+section "System Services"
+
+SERVICES=(
+  NetworkManager
+  bluetooth
+  sshd
+)
+
+for svc in "\${SERVICES[@]}"; do
+  if systemctl list-unit-files --state=enabled | grep -q "^\${svc}.service"; then
+    warn "$svc already enabled"
+  else
+    sudo systemctl enable "$svc" 2>/dev/null && log "Enabled: $svc" || warn "Could not enable $svc (may not be installed)"
+  fi
+done
+
+success "Services configured"
+
+# =============================================================================
+#  Done!
+# =============================================================================
+echo ""
+echo -e "\${BOLD}\${GREEN}╔══════════════════════════════════════════════════════╗"
+echo -e "║          Setup complete! Here's what was done:       ║"
+echo -e "╚══════════════════════════════════════════════════════╝\${RESET}"
+echo ""
+echo -e "  \${GREEN}✓\${RESET} System fully updated"
+echo -e "  \${GREEN}✓\${RESET} paru AUR helper (builds from source)"
+echo -e "  \${GREEN}✓\${RESET} CachyOS kernel (BORE) — built from AUR source"
+echo -e "  \${GREEN}✓\${RESET} Hyprland + Waybar + Wayland stack"
+echo -e "  \${GREEN}✓\${RESET} Starter Hyprland config written"
+echo -e "  \${GREEN}✓\${RESET} Docker + Docker Compose"
+echo -e "  \${GREEN}✓\${RESET} VS Code + Postman + lazygit (built from AUR)"
+echo -e "  \${GREEN}✓\${RESET} zsh + Starship prompt"
+echo -e "  \${GREEN}✓\${RESET} Node.js (nvm) + Python + Rust"
+echo -e "  \${GREEN}✓\${RESET} Performance tuning applied"
+echo -e "  \${GREEN}✓\${RESET} Neovim, ripgrep, bat, eza, fzf, tmux..."
+echo ""
+echo -e "\${YELLOW}Next steps:\${RESET}"
+echo -e "  1. \${BOLD}Reboot\${RESET} and test the CachyOS kernel first:"
+echo -e "     GRUB > Advanced Options > linux-cachyos"
+echo -e "     If it boots fine, set it as default:"
+echo -e "     Edit \${CYAN}/etc/default/grub\${RESET} → set GRUB_DEFAULT to the cachyos entry"
+echo -e "     Then run: \${CYAN}sudo grub-mkconfig -o /boot/grub/grub.cfg\${RESET}"
+echo -e "  2. \${BOLD}Log out and back in\${RESET} for docker group + zsh to take effect"
+echo -e "  3. \${BOLD}Edit ~/.config/hypr/hyprland.conf\${RESET} for your monitor layout"
+echo -e "     Run: \${CYAN}hyprctl monitors\${RESET} after first Hyprland login to get names"
+echo -e "  4. \${BOLD}Set your GIT_NAME / GIT_EMAIL\${RESET} at top of script before re-running,"
+echo -e "     or run: \${CYAN}git config --global user.name 'You'\${RESET} manually"
+echo ""
+echo -e "  \${BOLD}Full log saved to:\${RESET} $LOGFILE"
+echo ""
+</pre>
+      </div>
+
+      <div class="callout tip" style="margin-top: 20px;">
+        <div class="callout-icon">💡</div>
+        <div class="callout-body">
+          <strong>Before running</strong>
+          <p>Edit <code>GIT_NAME</code> and <code>GIT_EMAIL</code> near the top of the script.
+             The kernel compilation step (Step 4) will take 20–60 minutes — that's normal.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <script>
+    const SCRIPT_CONTENT = `#!/usr/bin/env bash
+# =============================================================================
+#  EndeavourOS Dev Setup Script
+#  Hyprland + Docker + Full Dev Environment
+#  Run as your regular user (NOT root). Script uses sudo where needed.
+#
+#  AUR packages are built from source via paru — no third-party binary repos.
+# =============================================================================
+
+set -euo pipefail
+
+# ─── Colors ──────────────────────────────────────────────────────────────────
+RED='\\033[0;31m';    GREEN='\\033[0;32m';  YELLOW='\\033[1;33m'
+BLUE='\\033[0;34m';   CYAN='\\033[0;36m';  BOLD='\\033[1m';  RESET='\\033[0m'
+
+# ─── Logging helpers ─────────────────────────────────────────────────────────
+log()     { echo -e "\${BOLD}\${BLUE}[•]\${RESET} $*"; }
+success() { echo -e "\${BOLD}\${GREEN}[✓]\${RESET} $*"; }
+warn()    { echo -e "\${BOLD}\${YELLOW}[!]\${RESET} $*"; }
+error()   { echo -e "\${BOLD}\${RED}[✗]\${RESET} $*"; exit 1; }
+section() { echo -e "\\n\${BOLD}\${CYAN}━━━ $* ━━━\${RESET}\\n"; }
+ask()     { echo -e "\${BOLD}\${YELLOW}[?]\${RESET} $*"; }
+
+# ─── Log file ────────────────────────────────────────────────────────────────
+LOGFILE="$HOME/eos-setup.log"
+exec > >(tee -a "$LOGFILE") 2>&1
+log "Full log will be saved to: $LOGFILE"
+
+# ─── Guard: must NOT run as root ─────────────────────────────────────────────
+if [[ "$EUID" -eq 0 ]]; then
+  error "Do NOT run this script as root. Run as your regular user."
+fi
+
+# ─── Sudo keepalive ──────────────────────────────────────────────────────────
+# Refresh sudo timestamp every 60s so we don't get locked out mid-script
+sudo -v
+( while true; do sudo -v; sleep 60; done ) &
+SUDO_KEEPALIVE_PID=$!
+trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null' EXIT
+
+# =============================================================================
+#  CONFIGURATION — Edit these before running
+# =============================================================================
+
+# Git identity (used for global git config)
+GIT_NAME="Your Name"
+GIT_EMAIL="you@example.com"
+
+# Extra packages you want installed (space-separated)
+EXTRA_PACMAN_PKGS=""
+EXTRA_AUR_PKGS=""
+
+# Set to "yes" to install nvm + Node.js
+INSTALL_NODE="yes"
+
+# Set to "yes" to install Python dev tools
+INSTALL_PYTHON="yes"
+
+# Set to "yes" to install Rust
+INSTALL_RUST="yes"
+
+# Default shell: "zsh" or "bash"
+PREFERRED_SHELL="zsh"
+
+# =============================================================================
+#  STEP 1 — Full system update
+# =============================================================================
+section "System Update"
+
+log "Updating keyring and packages..."
+sudo pacman -Sy --noconfirm --needed archlinux-keyring endeavouros-keyring 2>/dev/null || true
+sudo pacman -Syu --noconfirm
+success "System is up to date"
+
+# =============================================================================
+#  STEP 2 — Base build tools
+# =============================================================================
+section "Base Build Tools"
+
+BASE_PKGS=(
+  base-devel git curl wget unzip zip p7zip
+  reflector rsync htop neofetch tree
+  man-db man-pages bash-completion
+)
+
+log "Installing base packages..."
+sudo pacman -S --noconfirm --needed "\${BASE_PKGS[@]}"
+success "Base tools installed"
+
+# =============================================================================
+#  STEP 3 — paru (AUR helper)
+# =============================================================================
+section "AUR Helper (paru)"
+
+if command -v paru &> /dev/null; then
+  warn "paru already installed, skipping"
+else
+  log "Building and installing paru..."
+  PARU_BUILD_DIR=$(mktemp -d)
+  git clone --depth=1 https://aur.archlinux.org/paru.git "$PARU_BUILD_DIR/paru"
+  pushd "$PARU_BUILD_DIR/paru" > /dev/null
+  makepkg -si --noconfirm
+  popd > /dev/null
+  rm -rf "$PARU_BUILD_DIR"
+  success "paru installed"
+fi
+
+# =============================================================================
+#  STEP 4 — CachyOS kernel (built from AUR source)
+# =============================================================================
+section "CachyOS Kernel (AUR source build)"
+
+if pacman -Qs linux-cachyos > /dev/null 2>&1; then
+  warn "CachyOS kernel already installed, skipping"
+else
+  log "Building linux-cachyos and headers from AUR source..."
+  log "Note: this compiles the kernel — expect 20-60 mins depending on your CPU"
+  paru -S --noconfirm linux-cachyos linux-cachyos-headers
+
+  log "Regenerating GRUB to include the new kernel..."
+  sudo grub-mkconfig -o /boot/grub/grub.cfg
+
+  success "CachyOS kernel built and installed from source"
+  warn "Select it in GRUB > Advanced Options on next boot to verify it works"
+  warn "Once confirmed, you can set it as default (see next steps at end of script)"
+fi
+
+# =============================================================================
+#  STEP 5 — Hyprland & Wayland ecosystem
+# =============================================================================
+section "Hyprland + Wayland"
+
+HYPR_PKGS=(
+  # Core Hyprland
+  hyprland
+  xdg-desktop-portal-hyprland
+  xdg-desktop-portal-gtk
+  xdg-user-dirs
+
+  # Status bar & launcher
+  waybar
+  wofi
+
+  # Terminal
+  kitty
+
+  # Audio (Pipewire stack)
+  pipewire
+  pipewire-alsa
+  pipewire-pulse
+  pipewire-jack
+  wireplumber
+  pavucontrol
+
+  # Auth agent
+  polkit-kde-agent
+
+  # Qt Wayland support
+  qt5-wayland
+  qt6-wayland
+
+  # File manager
+  thunar
+  gvfs
+  tumbler
+  ffmpegthumbnailer
+
+  # Notifications
+  dunst
+  libnotify
+
+  # Clipboard
+  wl-clipboard
+  cliphist
+
+  # Wallpaper
+  swww
+
+  # Screenshot
+  grim
+  slurp
+  swappy
+
+  # Screen lock
+  swaylock
+  swayidle
+
+  # Fonts
+  noto-fonts
+  noto-fonts-cjk
+  noto-fonts-emoji
+  ttf-jetbrains-mono-nerd
+  ttf-nerd-fonts-symbols
+
+  # Theming
+  papirus-icon-theme
+  gtk3
+  gtk4
+)
+
+log "Installing Hyprland and Wayland packages..."
+sudo pacman -S --noconfirm --needed "\${HYPR_PKGS[@]}"
+success "Hyprland ecosystem installed"
+
+# =============================================================================
+#  STEP 6 — Hyprland config (starter dotfiles)
+# =============================================================================
+section "Hyprland Base Config"
+
+HYPR_CFG_DIR="$HOME/.config/hypr"
+mkdir -p "$HYPR_CFG_DIR"
+
+if [[ -f "$HYPR_CFG_DIR/hyprland.conf" ]]; then
+  warn "hyprland.conf already exists, backing up to hyprland.conf.bak"
+  cp "$HYPR_CFG_DIR/hyprland.conf" "$HYPR_CFG_DIR/hyprland.conf.bak"
+fi
+
+log "Writing starter Hyprland config..."
+cat > "$HYPR_CFG_DIR/hyprland.conf" <<'EOF'
+# =============================================================================
+#  Hyprland config — Starter (customize freely)
+# =============================================================================
+
+# Monitor (auto-detect; adjust if needed)
+monitor=,preferred,auto,1
+
+# Autostart
+exec-once = pipewire &
+exec-once = pipewire-pulse &
+exec-once = wireplumber &
+exec-once = /usr/lib/polkit-kde-authentication-agent-1
+exec-once = swww init
+exec-once = waybar
+exec-once = dunst
+exec-once = wl-paste --type text  --watch cliphist store
+exec-once = wl-paste --type image --watch cliphist store
+
+# Environment variables
+env = XCURSOR_SIZE,24
+env = GDK_BACKEND,wayland,x11
+env = QT_QPA_PLATFORM,wayland;xcb
+env = SDL_VIDEODRIVER,wayland
+env = CLUTTER_BACKEND,wayland
+
+# Input
+input {
+  kb_layout = us
+  follow_mouse = 1
+  sensitivity = 0
+  touchpad {
+    natural_scroll = false
+  }
+}
+
+# General
+general {
+  gaps_in = 5
+  gaps_out = 10
+  border_size = 2
+  col.active_border = rgba(7c5cfcee) rgba(00d4aaee) 45deg
+  col.inactive_border = rgba(1a1e28aa)
+  layout = dwindle
+}
+
+# Decoration
+decoration {
+  rounding = 8
+  blur {
+    enabled = true
+    size = 6
+    passes = 2
+    new_optimizations = true
+  }
+  drop_shadow = true
+  shadow_range = 8
+  shadow_render_power = 2
+  col.shadow = rgba(1a1a2eee)
+}
+
+# Animations
+animations {
+  enabled = true
+  bezier = overshot, 0.05, 0.9, 0.1, 1.05
+  animation = windows, 1, 5, overshot
+  animation = windowsOut, 1, 4, default, popin 80%
+  animation = border, 1, 6, default
+  animation = fade, 1, 5, default
+  animation = workspaces, 1, 5, overshot, slidevert
+}
+
+# Layout
+dwindle {
+  pseudotile = true
+  preserve_split = true
+}
+
+# Keybinds — Super = Windows key
+$mod = SUPER
+
+bind = $mod, Return, exec, kitty
+bind = $mod, Q, killactive
+bind = $mod, M, exit
+bind = $mod, E, exec, thunar
+bind = $mod, V, togglefloating
+bind = $mod, R, exec, wofi --show drun
+bind = $mod, P, pseudo
+bind = $mod, J, togglesplit
+bind = $mod, F, fullscreen
+
+# Screenshot
+bind = , Print, exec, grim -g "$(slurp)" - | swappy -f -
+
+# Clipboard history
+bind = $mod, C, exec, cliphist list | wofi --dmenu | cliphist decode | wl-copy
+
+# Move focus
+bind = $mod, left,  movefocus, l
+bind = $mod, right, movefocus, r
+bind = $mod, up,    movefocus, u
+bind = $mod, down,  movefocus, d
+
+# Workspaces
+bind = $mod, 1, workspace, 1
+bind = $mod, 2, workspace, 2
+bind = $mod, 3, workspace, 3
+bind = $mod, 4, workspace, 4
+bind = $mod, 5, workspace, 5
+bind = $mod, 6, workspace, 6
+bind = $mod, 7, workspace, 7
+bind = $mod, 8, workspace, 8
+bind = $mod, 9, workspace, 9
+
+# Move window to workspace
+bind = $mod SHIFT, 1, movetoworkspace, 1
+bind = $mod SHIFT, 2, movetoworkspace, 2
+bind = $mod SHIFT, 3, movetoworkspace, 3
+bind = $mod SHIFT, 4, movetoworkspace, 4
+bind = $mod SHIFT, 5, movetoworkspace, 5
+
+# Mouse binds
+bindm = $mod, mouse:272, movewindow
+bindm = $mod, mouse:273, resizewindow
+
+# Volume
+bind = , XF86AudioRaiseVolume,  exec, pactl set-sink-volume @DEFAULT_SINK@ +5%
+bind = , XF86AudioLowerVolume,  exec, pactl set-sink-volume @DEFAULT_SINK@ -5%
+bind = , XF86AudioMute,         exec, pactl set-sink-mute   @DEFAULT_SINK@ toggle
+
+# Brightness (requires brightnessctl)
+bind = , XF86MonBrightnessUp,   exec, brightnessctl set +10%
+bind = , XF86MonBrightnessDown, exec, brightnessctl set 10%-
+EOF
+
+success "Hyprland config written to $HYPR_CFG_DIR/hyprland.conf"
+
+# Starter waybar config dir
+mkdir -p "$HOME/.config/waybar"
+if [[ ! -f "$HOME/.config/waybar/config.jsonc" ]]; then
+  log "Writing starter Waybar config..."
+  cat > "$HOME/.config/waybar/config.jsonc" <<'EOF'
+{
+  "layer": "top",
+  "position": "top",
+  "height": 36,
+  "spacing": 4,
+
+  "modules-left":   ["hyprland/workspaces", "hyprland/window"],
+  "modules-center": ["clock"],
+  "modules-right":  ["pulseaudio", "network", "cpu", "memory", "battery", "tray"],
+
+  "hyprland/workspaces": { "on-click": "activate" },
+  "hyprland/window":     { "max-length": 60 },
+
+  "clock": {
+    "format": "{:%a %b %d  %H:%M}",
+    "tooltip-format": "<tt>{calendar}</tt>"
+  },
+  "cpu":    { "format": " {usage}%", "interval": 2 },
+  "memory": { "format": " {used:0.1f}G", "interval": 5 },
+  "battery": {
+    "states": { "warning": 30, "critical": 15 },
+    "format": "{icon} {capacity}%",
+    "format-icons": ["", "", "", "", ""]
+  },
+  "network": {
+    "format-wifi":         " {essid}",
+    "format-ethernet":     " Wired",
+    "format-disconnected": "⚠ No Network"
+  },
+  "pulseaudio": {
+    "format": "{icon} {volume}%",
+    "format-muted": " Muted",
+    "format-icons": { "default": ["", "", ""] },
+    "on-click": "pavucontrol"
+  },
+  "tray": { "spacing": 8 }
+}
+EOF
+fi
+
+# =============================================================================
+#  STEP 7 — Docker
+# =============================================================================
+section "Docker & Docker Compose"
+
+if pacman -Qs docker > /dev/null 2>&1; then
+  warn "Docker already installed, skipping"
+else
+  log "Installing Docker..."
+  sudo pacman -S --noconfirm --needed docker docker-compose docker-buildx
+fi
+
+log "Enabling Docker service..."
+sudo systemctl enable --now docker
+
+if id -nG "$USER" | grep -qw docker; then
+  warn "User already in docker group"
+else
+  log "Adding $USER to docker group..."
+  sudo usermod -aG docker "$USER"
+  warn "Log out and back in for docker group to take effect"
+fi
+
+success "Docker ready"
+
+# =============================================================================
+#  STEP 8 — AUR-based dev tools
+# =============================================================================
+section "Dev Tools (AUR)"
+
+AUR_PKGS=(
+  visual-studio-code-bin
+  postman-bin
+  lazygit
+  github-cli
+  btop
+)
+
+[[ -n "$EXTRA_AUR_PKGS" ]] && read -ra _extra <<< "$EXTRA_AUR_PKGS" && AUR_PKGS+=("\${_extra[@]}")
+
+log "Installing AUR dev tools..."
+paru -S --noconfirm --needed "\${AUR_PKGS[@]}"
+success "AUR dev tools installed"
+
+# =============================================================================
+#  STEP 9 — Zsh + Starship
+# =============================================================================
+section "Shell: Zsh + Starship"
+
+log "Installing zsh and plugins..."
+sudo pacman -S --noconfirm --needed \\
+  zsh \\
+  zsh-autosuggestions \\
+  zsh-syntax-highlighting \\
+  zsh-completions
+
+log "Installing Starship prompt..."
+sudo pacman -S --noconfirm --needed starship
+
+if [[ "$PREFERRED_SHELL" == "zsh" && "$SHELL" != "$(which zsh)" ]]; then
+  log "Setting zsh as default shell..."
+  chsh -s "$(which zsh)"
+  success "Default shell changed to zsh (takes effect on next login)"
+fi
+
+# Write ~/.zshrc
+ZSHRC="$HOME/.zshrc"
+if [[ ! -f "$ZSHRC" ]]; then
+  log "Writing ~/.zshrc..."
+  cat > "$ZSHRC" <<'EOF'
+# ─── History ───────────────────────────────────────────────────────────────
+HISTFILE=~/.zsh_history
+HISTSIZE=10000
+SAVEHIST=10000
+setopt HIST_IGNORE_DUPS HIST_IGNORE_SPACE SHARE_HISTORY
+
+# ─── Plugins ───────────────────────────────────────────────────────────────
+source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
+# ─── Completion ────────────────────────────────────────────────────────────
+autoload -Uz compinit && compinit
+
+# ─── Wayland / dev env vars ────────────────────────────────────────────────
+export XDG_SESSION_TYPE=wayland
+export GDK_BACKEND=wayland,x11
+export QT_QPA_PLATFORM="wayland;xcb"
+export MOZ_ENABLE_WAYLAND=1
+export EDITOR=nvim
+export VISUAL=nvim
+export TERMINAL=kitty
+export BROWSER=firefox
+
+# ─── Aliases ───────────────────────────────────────────────────────────────
+alias ls='ls --color=auto'
+alias ll='ls -lah'
+alias la='ls -A'
+alias grep='grep --color=auto'
+alias vim='nvim'
+alias dc='docker compose'
+alias dcu='docker compose up -d'
+alias dcd='docker compose down'
+alias dcl='docker compose logs -f'
+alias gst='git status'
+alias gp='git push'
+alias gl='git pull'
+
+# ─── Starship prompt ───────────────────────────────────────────────────────
+eval "$(starship init zsh)"
+EOF
+  success "~/.zshrc created"
+else
+  warn "~/.zshrc already exists, skipping (check it manually)"
+fi
+
+# =============================================================================
+#  STEP 10 — Node.js via nvm
+# =============================================================================
+if [[ "$INSTALL_NODE" == "yes" ]]; then
+  section "Node.js (nvm)"
+
+  if [[ -d "$HOME/.nvm" ]]; then
+    warn "nvm already installed, skipping"
+  else
+    log "Installing nvm..."
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+
+    # Add nvm to zshrc
+    cat >> "$ZSHRC" <<'EOF'
+
+# ─── nvm ───────────────────────────────────────────────────────────────────
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \\. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \\. "$NVM_DIR/bash_completion"
+EOF
+
+    # Install LTS Node.js
+    export NVM_DIR="$HOME/.nvm"
+    source "$NVM_DIR/nvm.sh"
+    log "Installing Node.js LTS..."
+    nvm install --lts
+    nvm use --lts
+    nvm alias default 'lts/*'
+    success "Node.js LTS installed via nvm"
+  fi
+fi
+
+# =============================================================================
+#  STEP 11 — Python dev tools
+# =============================================================================
+if [[ "$INSTALL_PYTHON" == "yes" ]]; then
+  section "Python"
+
+  sudo pacman -S --noconfirm --needed \\
+    python \\
+    python-pip \\
+    python-virtualenv \\
+    python-pipx \\
+    python-poetry
+
+  success "Python tools installed"
+fi
+
+# =============================================================================
+#  STEP 12 — Rust
+# =============================================================================
+if [[ "$INSTALL_RUST" == "yes" ]]; then
+  section "Rust (rustup)"
+
+  if command -v rustup &> /dev/null; then
+    warn "Rust already installed, skipping"
+  else
+    log "Installing Rust via rustup..."
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    source "$HOME/.cargo/env"
+    success "Rust installed"
+
+    # Add cargo to zshrc
+    cat >> "$ZSHRC" <<'EOF'
+
+# ─── Rust / Cargo ──────────────────────────────────────────────────────────
+source "$HOME/.cargo/env"
+EOF
+  fi
+fi
+
+# =============================================================================
+#  STEP 13 — Git global config
+# =============================================================================
+section "Git Config"
+
+if [[ "$GIT_NAME" != "Your Name" ]]; then
+  git config --global user.name  "$GIT_NAME"
+  git config --global user.email "$GIT_EMAIL"
+fi
+
+git config --global init.defaultBranch main
+git config --global core.editor nvim
+git config --global pull.rebase false
+git config --global alias.lg "log --oneline --graph --decorate --all"
+git config --global alias.st status
+git config --global alias.co checkout
+
+success "Git configured"
+
+# =============================================================================
+#  STEP 14 — System performance tuning
+# =============================================================================
+section "Performance Tuning"
+
+log "Writing /etc/sysctl.d/99-dev.conf..."
+sudo tee /etc/sysctl.d/99-dev.conf > /dev/null <<'EOF'
+# Inotify: needed for file-heavy dev servers (webpack, vite, etc.)
+fs.inotify.max_user_watches = 524288
+fs.inotify.max_user_instances = 512
+
+# Keep swap minimal with 32GB RAM
+vm.swappiness = 10
+
+# Better network throughput
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+EOF
+
+sudo sysctl --system > /dev/null
+success "sysctl tuning applied"
+
+log "Enabling periodic SSD TRIM..."
+sudo systemctl enable fstrim.timer
+success "fstrim.timer enabled"
+
+log "Setting up reflector for fastest mirrors..."
+sudo pacman -S --noconfirm --needed reflector
+sudo tee /etc/xdg/reflector/reflector.conf > /dev/null <<'EOF'
+--save /etc/pacman.d/mirrorlist
+--country "United States,Germany,Netherlands"
+--protocol https
+--latest 10
+--sort rate
+EOF
+sudo systemctl enable --now reflector.service
+success "Reflector configured and enabled"
+
+# =============================================================================
+#  STEP 15 — Extra useful packages
+# =============================================================================
+section "Extras"
+
+EXTRA_PKGS=(
+  neovim
+  tmux
+  ripgrep
+  fd
+  bat
+  eza
+  fzf
+  jq
+  yq
+  httpie
+  net-tools
+  openssh
+  gnupg
+  brightnessctl
+  networkmanager
+  nm-connection-editor
+  firefox
+)
+
+[[ -n "$EXTRA_PACMAN_PKGS" ]] && read -ra _expac <<< "$EXTRA_PACMAN_PKGS" && EXTRA_PKGS+=("\${_expac[@]}")
+
+log "Installing extra tools..."
+sudo pacman -S --noconfirm --needed "\${EXTRA_PKGS[@]}"
+
+# Modern ls aliases using eza
+cat >> "$ZSHRC" <<'EOF'
+
+# ─── eza (modern ls) ───────────────────────────────────────────────────────
+if command -v eza &> /dev/null; then
+  alias ls='eza --icons'
+  alias ll='eza -lah --icons --git'
+  alias la='eza -a --icons'
+  alias tree='eza --tree --icons'
+fi
+
+# ─── bat (modern cat) ──────────────────────────────────────────────────────
+if command -v bat &> /dev/null; then
+  alias cat='bat --paging=never'
+fi
+
+# ─── fzf keybinds ──────────────────────────────────────────────────────────
+source /usr/share/fzf/key-bindings.zsh 2>/dev/null || true
+source /usr/share/fzf/completion.zsh   2>/dev/null || true
+EOF
+
+success "Extra tools installed"
+
+# =============================================================================
+#  STEP 16 — XDG user dirs
+# =============================================================================
+section "XDG User Directories"
+xdg-user-dirs-update
+success "XDG dirs created"
+
+# =============================================================================
+#  STEP 17 — Enable system services
+# =============================================================================
+section "System Services"
+
+SERVICES=(
+  NetworkManager
+  bluetooth
+  sshd
+)
+
+for svc in "\${SERVICES[@]}"; do
+  if systemctl list-unit-files --state=enabled | grep -q "^\${svc}.service"; then
+    warn "$svc already enabled"
+  else
+    sudo systemctl enable "$svc" 2>/dev/null && log "Enabled: $svc" || warn "Could not enable $svc (may not be installed)"
+  fi
+done
+
+success "Services configured"
+
+# =============================================================================
+#  Done!
+# =============================================================================
+echo ""
+echo -e "\${BOLD}\${GREEN}╔══════════════════════════════════════════════════════╗"
+echo -e "║          Setup complete! Here's what was done:       ║"
+echo -e "╚══════════════════════════════════════════════════════╝\${RESET}"
+echo ""
+echo -e "  \${GREEN}✓\${RESET} System fully updated"
+echo -e "  \${GREEN}✓\${RESET} paru AUR helper (builds from source)"
+echo -e "  \${GREEN}✓\${RESET} CachyOS kernel (BORE) — built from AUR source"
+echo -e "  \${GREEN}✓\${RESET} Hyprland + Waybar + Wayland stack"
+echo -e "  \${GREEN}✓\${RESET} Starter Hyprland config written"
+echo -e "  \${GREEN}✓\${RESET} Docker + Docker Compose"
+echo -e "  \${GREEN}✓\${RESET} VS Code + Postman + lazygit (built from AUR)"
+echo -e "  \${GREEN}✓\${RESET} zsh + Starship prompt"
+echo -e "  \${GREEN}✓\${RESET} Node.js (nvm) + Python + Rust"
+echo -e "  \${GREEN}✓\${RESET} Performance tuning applied"
+echo -e "  \${GREEN}✓\${RESET} Neovim, ripgrep, bat, eza, fzf, tmux..."
+echo ""
+echo -e "\${YELLOW}Next steps:\${RESET}"
+echo -e "  1. \${BOLD}Reboot\${RESET} and test the CachyOS kernel first:"
+echo -e "     GRUB > Advanced Options > linux-cachyos"
+echo -e "     If it boots fine, set it as default:"
+echo -e "     Edit \${CYAN}/etc/default/grub\${RESET} → set GRUB_DEFAULT to the cachyos entry"
+echo -e "     Then run: \${CYAN}sudo grub-mkconfig -o /boot/grub/grub.cfg\${RESET}"
+echo -e "  2. \${BOLD}Log out and back in\${RESET} for docker group + zsh to take effect"
+echo -e "  3. \${BOLD}Edit ~/.config/hypr/hyprland.conf\${RESET} for your monitor layout"
+echo -e "     Run: \${CYAN}hyprctl monitors\${RESET} after first Hyprland login to get names"
+echo -e "  4. \${BOLD}Set your GIT_NAME / GIT_EMAIL\${RESET} at top of script before re-running,"
+echo -e "     or run: \${CYAN}git config --global user.name 'You'\${RESET} manually"
+echo ""
+echo -e "  \${BOLD}Full log saved to:\${RESET} $LOGFILE"
+echo ""
+`;
+
+    function copyScript() {
+      navigator.clipboard.writeText(SCRIPT_CONTENT).then(() => {
+        const btn = document.getElementById('copyBtn');
+        btn.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          Copied!`;
+        btn.style.background = 'var(--accent2)';
+        setTimeout(() => {
+          btn.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            Copy Script`;
+          btn.style.background = 'var(--accent)';
+        }, 2000);
+      }).catch(() => {
+        // Fallback for older browsers
+        const ta = document.createElement('textarea');
+        ta.value = SCRIPT_CONTENT;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      });
+    }
+    </script>
 
   </main>
 </div>
